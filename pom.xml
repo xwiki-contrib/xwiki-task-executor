@@ -9,7 +9,7 @@
   <groupId>org.xwiki.contrib</groupId>
   <artifactId>xwiki-task-executor</artifactId>
   <name>XWiki Task Executor</name>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0</version>
   <packaging>xar</packaging>
   <description>
     A system built on top of the scheduler for executing tasks that are too long to be executed 
