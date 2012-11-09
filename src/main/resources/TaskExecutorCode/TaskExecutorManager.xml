@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xwikidoc>
+<web>TaskExecutorCode</web>
+<name>TaskExecutorManager</name>
+<language></language>
+<defaultLanguage></defaultLanguage>
+<translation>0</translation>
+<parent>TaskExecutorCode.WebHome</parent>
+<creator>xwiki:XWiki.Admin</creator>
+<author>xwiki:XWiki.Admin</author>
+<customClass></customClass>
+<contentAuthor>xwiki:XWiki.Admin</contentAuthor>
+<creationDate>1352384823000</creationDate>
+<date>1352487464000</date>
+<contentUpdateDate>1352487464000</contentUpdateDate>
+<version>1.1</version>
+<title>TaskExecutorManager</title>
+<template></template>
+<defaultTemplate></defaultTemplate>
+<validationScript></validationScript>
+<comment></comment>
+<minorEdit>false</minorEdit>
+<syntaxId>xwiki/2.1</syntaxId>
+<hidden>false</hidden>
+<content>//{{groovy}}
+import org.slf4j.LoggerFactory
+import org.xwiki.container.ApplicationContext
+import org.xwiki.container.Container
+import com.xpn.xwiki.web.Utils
+import org.apache.commons.io.FileUtils
+import org.apache.commons.io.output.FileWriterWithEncoding
+import org.xwiki.query.Query
+
+/***********************************************************************************************************************
+ * Script constants
+ ******************************************************************************************************************** */
+TASK_EXECUTOR_MANAGER_JOB_CONFIGURATION_CLASS = "TaskExecutorCode.TaskExecutorManagerJobConfigurationClass"
+TASK_EXECUTOR_MANAGER_JOB_CONFIGURATION = "TaskExecutorCode.TaskExecutorManagerJobConfiguration"
+TASK_EXECUTOR_CLASS = "TaskExecutorCode.TaskExecutorClass"
+TASK_CLASS = "TaskExecutorCode.TaskClass"
+
+LOGGER_ID = "TaskExecutorManagerJob"
+
+/* These constants reflects the statuses defined in the TaskExecutorCode.TaskClass */
+READY_STATUS = "READY"
+RUNNING_STATUS = "RUNNING"
+DONE_STATUS = "DONE"
+ERROR_STATUS = "ERROR"
+
+/* A litte hack to make the script runnable from the scheduler and from a regular page */
+xwikiApi = xwiki
+if(xcontext instanceof com.xpn.xwiki.XWikiContext) {
+    xwikiApi = new com.xpn.xwiki.api.XWiki(xwiki, xcontext)
+}
+
+/***********************************************************************************************************************
+ * Helper classes
+ ******************************************************************************************************************** */
+
+/**
+ * This class contains a simple API for logging messages on the default logger and also on a file in the temp filesystem.
+ */
+class Logger
+{
+    /* This is the base directory where every process related to Task Executor will put its logs. */
+    protected LOG_DIRECTORY = "TaskExecutorLogs"
+
+    protected logger = null
+
+    protected logFile = null
+
+    def Logger(name)
+    {
+        this(name, null)
+    }
+
+    def Logger(name, fileName)
+    {
+        logger = LoggerFactory.getLogger(name)
+
+        /* Use old API for backward compatibility. */
+        def temporaryDirectory = Utils.getComponent(Container.class)?.getApplicationContext()?.getTemporaryDirectory()
+
+        if (temporaryDirectory != null &amp;&amp; fileName != null) {
+            def logDirectory = new File(temporaryDirectory, LOG_DIRECTORY)
+            FileUtils.forceMkdir(logDirectory)
+            logFile = new File(logDirectory, fileName)
+        }
+    }
+
+    def info(message)
+    {
+        logger.info(message)
+        this.log(message)
+    }
+
+    def warn(message)
+    {
+        logger.warn(message)
+        this.log(message)
+    }
+
+    def error(message)
+    {
+        logger.error(message)
+        this.log(message)
+    }
+
+    def debug(message)
+    {
+        logger.debug(message)
+        this.log(message)
+    }
+
+    def log(message)
+    {
+        if (logFile != null) {
+            /* Compatibility with older versions of XWiki */
+            def fw = new FileWriterWithEncoding(logFile, "UTF-8", true)
+            fw.write("[${new Date()}] - ${message}\n")
+            fw.close()
+            
+            /* If your installation has recent commons-io use this instead */
+            //FileUtils.write(logFile, "[${new Date()}] - ${message}\n", true);            
+        }
+    }
+}
+
+/***********************************************************************************************************************
+ * Helper functions
+ ******************************************************************************************************************** */
+def getTaskExecutor(logger, task)
+{
+    def taskExecutorName = task.getObject(TASK_CLASS)?.getProperty("taskExecutor").value
+
+    if (!xwikiApi.exists(taskExecutorName)) {
+        logger.log("${task} specifies an executor ${taskExecutorName} that doesn't exist")
+        return null
+    }
+
+    def taskExecutorDocument = xwikiApi.getDocument(taskExecutorName)
+
+    def taskExecutorObject = taskExecutorDocument.getObject(TASK_EXECUTOR_CLASS)
+
+    if (taskExecutorObject == null) {
+        logger.warn("The page'${taskExecutorDocument}' specified by '${task}' doesn't contain any executor definition")
+
+        return null
+    }
+
+    def taskExecutor = [:]
+    taskExecutor["name"] = taskExecutorObject.getProperty("name")?.value
+    taskExecutor["task"] = task
+    taskExecutor["script"] = xwikiApi.xwiki.parseGroovyFromString(taskExecutorObject.getProperty("script")?.value, xwikiApi.context)
+
+    return taskExecutor
+}
+
+/***********************************************************************************************************************
+ * Main program
+ ******************************************************************************************************************** */
+
+/* Retrieve the configuration object */
+def configurationObject = xwikiApi.getDocument(TASK_EXECUTOR_MANAGER_JOB_CONFIGURATION)?.getObject(TASK_EXECUTOR_MANAGER_JOB_CONFIGURATION_CLASS)
+
+/* Check if we have to write to log file. Log file is located in the XWiki temporary directory. */
+def logToFile = configurationObject?.getProperty("logToFile")?.value
+
+def logger = null
+if (logToFile == 1) {
+    logger = new Logger(LOGGER_ID, "${LOGGER_ID}.log")
+}
+else {
+    logger = new Logger(LOGGER_ID)
+}
+
+/* Get the maximum number of concurrent tasks. */
+def maxConcurrentTasks = configurationObject?.getProperty("maxConcurrentTasks")?.value
+if (maxConcurrentTasks == null || "".equals(maxConcurrentTasks) || maxConcurrentTasks &lt; 1) {
+    maxConcurrentTasks = 1
+}
+
+/* Check if there is a already a running task */
+def query = "where doc.object(${TASK_CLASS}).status = '${RUNNING_STATUS}'"
+def results = services.get("query").createQuery(query, Query.XWQL).execute()
+
+if (results.size() &gt; maxConcurrentTasks) {
+    logger.warn("${results.size} tasks running. The limit of ${maxConcurrentTasks} is exceeded. Doing nothing.")
+    return
+}
+
+/* Retrieve all the tasks */
+query = "where doc.object(${TASK_CLASS}).status = '${READY_STATUS}' order by doc.name asc"
+results = services.get("query").createQuery(query, Query.XWQL).execute()
+
+if (results.size() == 0) {
+    logger.info("No tasks READY to be executed found.")
+
+    return null
+}
+
+/* Find the fist well defined task, i.e. a task that points to a valid executor and choose it as the next task to be executed.
+ * Tasks are ordered by name, so if you want to prioritize a task, you can assign to it a name that comes first in
+ * alphabetical order. Prefixing tasks with digits (e.g., 000_, 001_ etc. can be useful)
+ */
+def taskExecutor = null
+for (taskDocumentName in results) {
+    /* Get the task document. */
+    def task = xwikiApi.getDocument(taskDocumentName)
+
+    try {
+        /* Try to build a task executor from the task. */
+        taskExecutor = getTaskExecutor(logger, task)
+        if (taskExecutor != null) {
+            break
+        }
+    }
+    catch (e) {
+        logger.error("Error while creating task for document ${task} : ${e}")
+    }
+}
+
+/* If we couldn't find any task that can be executed, return. */
+if (taskExecutor == null) {
+    logger.warn("There are READY tasks but no one of them can be executed. Doing nothing.")
+    return
+}
+
+/* Here we have a task. Execute it! */
+try {
+    logger.info("Setting status of task '${taskExecutor.task}' to ${RUNNING_STATUS}.")
+    taskExecutor.task.getObject(TASK_CLASS).set("status", RUNNING_STATUS)
+    taskExecutor.task.save()
+
+    def taskExecutorLogger = new Logger(taskExecutor.name, "${taskExecutor.task.fullName}.log")
+    logger.info("Executing '${taskExecutor.name}' on '${taskExecutor.task}'...")
+    def startTime = System.currentTimeMillis()
+    taskExecutor.script.run(taskExecutorLogger, xwikiApi, taskExecutor.task)
+    logger.info("Finished executing '${taskExecutor.name}' on '${taskExecutor.task}'. Execution time: ${System.currentTimeMillis() - startTime}ms")
+
+    logger.info("Setting status of task '${taskExecutor.task}' to ${DONE_STATUS}.")
+    taskExecutor.task.getObject(TASK_CLASS).set("status", DONE_STATUS)
+    taskExecutor.task.save()
+}
+catch (e) {
+    logger.error("Error executing '${taskExecutor.name}' on '${taskExecutor.task}' : ${e}")
+
+    logger.info("Setting status of task '${taskExecutor.task}' to ${ERROR_STATUS}.")
+    taskExecutor.task.getObject(TASK_CLASS).set("status", ERROR_STATUS)
+    taskExecutor.task.save()
+}
+
+//{/groovy}</content></xwikidoc>

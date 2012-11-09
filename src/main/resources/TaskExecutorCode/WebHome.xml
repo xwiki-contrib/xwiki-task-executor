@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xwikidoc>
+<web>TaskExecutorCode</web>
+<name>WebHome</name>
+<language></language>
+<defaultLanguage></defaultLanguage>
+<translation>0</translation>
+<parent>Main.WebHome</parent>
+<creator>xwiki:XWiki.Admin</creator>
+<author>xwiki:XWiki.Admin</author>
+<customClass></customClass>
+<contentAuthor>xwiki:XWiki.Admin</contentAuthor>
+<creationDate>1352383929000</creationDate>
+<date>1352471094000</date>
+<contentUpdateDate>1352471094000</contentUpdateDate>
+<version>1.1</version>
+<title>Task executor home</title>
+<template></template>
+<defaultTemplate></defaultTemplate>
+<validationScript></validationScript>
+<comment></comment>
+<minorEdit>false</minorEdit>
+<syntaxId>xwiki/2.1</syntaxId>
+<hidden>false</hidden>
+<content>{{velocity}}
+
+Welcome to the task executor home.
+
+You might be interested in the [[task executor manager job's log&gt;&gt;TaskExecutorManagerJobLog]]
+
+== Tasks
+
+#set($columns = [ "doc.title"  ,"taskExecutor"  ,"status" ])
+#set($columnsProperties = {
+      "taskExecutor" : { "type" : "text", "link" : "view", "size" : 10, "filterable" : true, "sortable": true },
+      "status" : { "type" : "list", "link" : "view", "size" : 10, "filterable" : true, "sortable": true },
+      "_avatar" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "_images" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "_attachments" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "_actions" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "doc.name" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.space" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.fullName" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.author" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.date" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.creator" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.creationDate" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.title" : { "type" : "text", "link" : "view", "size" : "20", "filterable" : true, "sortable": true }
+})
+#set($options = { 
+"className":"TaskExecutorCode.TaskClass",   
+"translationPrefix" : "task.livetable.",  
+"tagCloud" : true,  
+"rowCount": 15,  
+"maxPages" : 10, 
+"selectedColumn" : "doc.title", 
+"defaultOrder" : "asc" 
+})
+#livetable("task" $columns $columnsProperties $options)
+
+== Logs ==
+
+#set($showLogURL = $xwiki.getDocument("TaskExecutorCode.ShowLog").getURL())
+
+#set($tasks = $services.query.xwql("from doc.object(TaskExecutorCode.TaskClass) as tdc").execute())
+
+{{html}}
+&lt;form action="$showLogURL" target="_blank"&gt;
+&lt;select name="log"&gt;
+#foreach($task in $tasks)
+  &lt;option value="${task}.log"&gt;$task&lt;/option&gt;
+#end
+&lt;/select&gt;
+&lt;input type="submit" value="Show log" class="button"/&gt;
+&lt;/form&gt;
+{{/html}}
+
+== Executors ==
+
+#set($columns = [ "doc.title"  ,"name" ])
+#set($columnsProperties = {
+      "name" : { "type" : "text", "link" : "view", "size" : 10, "filterable" : true, "sortable": true },
+      "script" : { "type" : "none", "link" : "none", "size" : 10, "filterable" : true, "sortable": true },    
+      "_avatar" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "_images" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "_attachments" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "_actions" : { "type" : "none", "link" : "none", "html" : "true", "sortable":false },
+      "doc.name" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.space" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.fullName" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.author" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.date" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.creator" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.creationDate" : { "type" : "text", "link" : "view", "size" : "10", "filterable" : true, "sortable": true },
+      "doc.title" : { "type" : "text", "link" : "view", "size" : "20", "filterable" : true, "sortable": true }
+})
+#set($options = { 
+"className":"TaskExecutorCode.TaskExecutorClass",   
+"translationPrefix" : "taskexecutor.livetable.",  
+"tagCloud" : true,  
+"rowCount": 15,  
+"maxPages" : 10, 
+"selectedColumn" : "doc.title", 
+"defaultOrder" : "asc" 
+})
+#livetable("taskexecutor" $columns $columnsProperties $options)
+
+{{/velocity}}</content></xwikidoc>
